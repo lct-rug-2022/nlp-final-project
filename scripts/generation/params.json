@@ -1,0 +1,8 @@
+{
+    "default": {
+        "learning_rate": 1e-4,
+        "batch_size": 32,
+        "max_epochs": 10,
+        "eval_steps": 500
+    }
+}
