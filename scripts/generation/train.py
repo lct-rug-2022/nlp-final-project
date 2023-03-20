@@ -26,7 +26,7 @@ with open(Path(__file__).parent / 'params.json') as f:
     EDOS_EVAL_PARAMS = json.load(f)
 
 IS_CUDA_AVAILABLE = torch.cuda.is_available()
-IS_BF16_AVAILABLE = torch.cuda.is_bf16_supported()
+IS_BF16_AVAILABLE = IS_CUDA_AVAILABLE and torch.cuda.is_bf16_supported()
 print('IS_CUDA_AVAILABLE', IS_CUDA_AVAILABLE)
 print('IS_BF16_AVAILABLE', IS_BF16_AVAILABLE)
 
@@ -43,7 +43,7 @@ def _load_dataset(tokenizer, generation_type='explanation_only'):
     :param generation_type: one of 'explanation_only', 'explanation_use_label', 'label_and_explanation'
     :return:
     """
-    dataset = load_dataset('esni')
+    dataset = load_dataset('esnli')
     dataset = dataset.rename_column('nl', 'text')
 
     def tokenize_function(examples):
@@ -158,7 +158,7 @@ def main(
     print('\n', '-' * 32, 'Loading...', '-' * 32, '\n')
 
     # create neptune run
-    neptune_run = neptune.init_run(with_id=resume_training_id, tags=[generation_type, f'model:{base_model}', f'conf:{config_name}'])
+    neptune_run = neptune.init_run(with_id=resume_training_id, tags=[f'task:{generation_type}', f'model:{base_model}', f'conf:{config_name}'])
     neptune_callback = NeptuneCallback(run=neptune_run)
     neptune_object_id = neptune_run['sys/id'].fetch()
     print('neptune_object_id', neptune_object_id)
@@ -222,6 +222,7 @@ def main(
     neptune_callback.run['finetuning/parameters'] = {
         'base_model': base_model,
         'config_name': config_name,
+        'generation_type': generation_type,
     }
     neptune_callback.run['finetuning/final_metrics'] = dict(test_prediction.metrics)
 

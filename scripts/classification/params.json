@@ -2,7 +2,26 @@
     "default": {
         "learning_rate": 1e-5,
         "batch_size": 32,
-        "max_epochs": 10,
-        "eval_steps": 500
+        "max_epochs": 1,
+        "eval_steps": 200
+    },
+
+    "default-b64": {
+        "batch_size": 64
+    },
+
+    "default-lr2e-5": {
+        "learning_rate": 2e-5
+    },
+
+    "default-lr5e-6": {
+        "learning_rate": 5e-6
+    },
+
+    "base": {
+        "learning_rate": 1e-5,
+        "batch_size": 64,
+        "max_epochs": 3,
+        "eval_steps": 400
     }
 }

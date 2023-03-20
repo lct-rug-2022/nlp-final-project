@@ -21,7 +21,7 @@ source /data/$USER/.envs/nlp-final-project/bin/activate
 
 
 export $(cat .env | xargs)
-export NEPTUNE_PROJECT="k4black/esnli-classification"
+export NEPTUNE_PROJECT="lct-rug-2022/nlp-classification"
 export TOKENIZERS_PARALLELISM=false
 
 

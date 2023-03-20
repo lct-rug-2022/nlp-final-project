@@ -27,7 +27,7 @@ with open(Path(__file__).parent / 'params.json') as f:
     EDOS_EVAL_PARAMS = json.load(f)
 
 IS_CUDA_AVAILABLE = torch.cuda.is_available()
-IS_BF16_AVAILABLE = torch.cuda.is_bf16_supported()
+IS_BF16_AVAILABLE = IS_CUDA_AVAILABLE and torch.cuda.is_bf16_supported()
 print('IS_CUDA_AVAILABLE', IS_CUDA_AVAILABLE)
 print('IS_BF16_AVAILABLE', IS_BF16_AVAILABLE)
 
@@ -47,7 +47,7 @@ def _load_dataset(tokenizer, classification_type='nli'):
     cl = ClassLabel(names=['entailment', 'neutral', 'contradiction'])
     label2id, id2label = {n: i for i, n in enumerate(cl.names)}, {i: n for i, n in enumerate(cl.names)}
 
-    dataset = load_dataset('esni')
+    dataset = load_dataset('esnli')
     dataset = dataset.cast_column('label', cl)
 
     def tokenize_function(examples):
@@ -65,12 +65,12 @@ def _load_dataset(tokenizer, classification_type='nli'):
 
 
 def _get_metrics_function(tokenizer):
-    metrics = evaluate.combine(['f1'])
+    f1_metric = evaluate.load('f1')
 
     def _compute_metrics(eval_preds):
         preds, labels = eval_preds
         predictions = np.argmax(preds, axis=-1)
-        return metrics.compute(predictions=predictions, references=labels, average='macro')
+        return f1_metric.compute(predictions=predictions, references=labels, average='macro')
 
     return _compute_metrics
 
@@ -104,9 +104,9 @@ def _get_trainer_args(params, hub_model_name, output_dir, push_to_hub=False, mod
         save_steps=params['eval_steps'],
 
         metric_for_best_model='f1',
-        greater_is_better=False,
+        greater_is_better=True,
         load_best_model_at_end=True,
-        save_total_limit=3,
+        save_total_limit=1,
 
         torch_compile=False,  # not working as Tesla T4 for now
 
@@ -119,9 +119,9 @@ def _get_trainer_args(params, hub_model_name, output_dir, push_to_hub=False, mod
 
 @app.command()
 def main(
-        base_model: str = typer.Option('t5-small', help='Pretrained model to finetune: HUB or Path'),
+        base_model: str = typer.Option('roberta-base', help='Pretrained model to finetune: HUB or Path'),
         config_name: str = typer.Option('default', help='Config name to use: see params.json'),
-        classification_type: str = typer.Option('classification_type', help='What we classify'),
+        classification_type: str = typer.Option('nli', help='What we classify'),
         resume_training_id: str = typer.Option(None, help='Neptune tag to resume training from or None'),
         postfix: str = typer.Option('', help='Model name postfix'),
         push_to_hub: bool = typer.Option(False, help='Push model to HuggingFace Hub'),
@@ -140,13 +140,13 @@ def main(
     # load config
     params = EDOS_EVAL_PARAMS[config_name.split('-')[0]]  # read base config
     params.update(EDOS_EVAL_PARAMS[config_name])  # update with specific config
-    model_support_fp16 = True and 'flan-t5' not in base_model and 'byt5' not in base_model  # flan-t5 and byt5 do not support fp16
+    model_support_fp16 = True
     print('model_support_fp16', model_support_fp16)
 
     print('\n', '-' * 32, 'Loading...', '-' * 32, '\n')
 
     # create neptune run
-    neptune_run = neptune.init_run(with_id=resume_training_id, tags=[classification_type, f'model:{base_model}', f'conf:{config_name}'])
+    neptune_run = neptune.init_run(with_id=resume_training_id, tags=[f'task:{classification_type}', f'model:{base_model}', f'conf:{config_name}'])
     neptune_callback = NeptuneCallback(run=neptune_run)
     neptune_object_id = neptune_run['sys/id'].fetch()
     print('neptune_object_id', neptune_object_id)
@@ -201,12 +201,7 @@ def main(
 
     print('\n', '-' * 32, 'End', '-' * 32, '\n')
 
-    test_prediction = trainer.predict(tokenized_dataset['test'], num_beams=1)
-    print('metrics (n_bins=1)', dict(test_prediction.metrics))
-    test_prediction = trainer.predict(tokenized_dataset['test'], num_beams=2)
-    print('metrics (n_bins=2)', dict(test_prediction.metrics))
-    test_prediction = trainer.predict(tokenized_dataset['test'], num_beams=4)
-    print('metrics (n_bins=4)', dict(test_prediction.metrics))
+    test_prediction = trainer.predict(tokenized_dataset['test'])
 
     neptune_callback.run['finetuning/parameters'] = {
         'base_model': base_model,

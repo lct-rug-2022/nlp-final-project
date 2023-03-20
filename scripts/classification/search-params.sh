@@ -21,11 +21,14 @@ source /data/$USER/.envs/nlp-final-project/bin/activate
 
 
 export $(cat .env | xargs)
-export NEPTUNE_PROJECT="lct-rug-2022/nlp-generation"
+export NEPTUNE_PROJECT="lct-rug-2022/nlp-classification"
 export TOKENIZERS_PARALLELISM=false
 
 
-python scripts/generation/train.py $*
+python scripts/classification/train.py --config-name=default $*
+python scripts/classification/train.py --config-name=default-b64 $*
+python scripts/classification/train.py --config-name=default-lr2e-5 $*
+python scripts/classification/train.py --config-name=default-lr5e-6 $*
 
 
 deactivate
