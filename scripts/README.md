@@ -58,7 +58,7 @@ Run peregrine setup script (with activate venv, load modules and read `.env` fil
 
 1. Run job script 
     ```shell
-    sbatch training/baseline/run_training.sh --base-model=bert-base-uncased --task-name=label_sexist [other options]
+    sbatch scripts/classification/train.sh --base-model=roberta-base [other options]
     ```
 2. Monitor status with 
     ```shell
