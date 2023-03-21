@@ -44,7 +44,6 @@ def _load_dataset(tokenizer, generation_type='explanation_only'):
     :return:
     """
     dataset = load_dataset('esnli')
-    dataset = dataset.rename_column('nl', 'text')
 
     def tokenize_function(examples):
         if generation_type == 'explanation_only':
