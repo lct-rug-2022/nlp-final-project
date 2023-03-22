@@ -44,17 +44,18 @@ def _load_dataset(tokenizer, classification_type='nli'):
     :param classification_type: one of 'nli', 'nli_explanation', TODO
     :return:
     """
-    cl = ClassLabel(names=['entailment', 'neutral', 'contradiction'])
+    dataset = load_dataset('esnli')
+    cl = dataset['train'].features['label']
     label2id, id2label = {n: i for i, n in enumerate(cl.names)}, {i: n for i, n in enumerate(cl.names)}
 
-    dataset = load_dataset('esnli')
-    dataset = dataset.cast_column('label', cl)
+    def _join_with_sep(list_a, list_b):
+        return [f'{h}{tokenizer.eos_token} {l}' for h, l in zip(list_a, list_b)]
 
     def tokenize_function(examples):
         if classification_type == 'nli':
             examples = tokenizer(examples['premise'], examples['hypothesis'], truncation=True, padding='do_not_pad')
         elif classification_type == 'nli_explanation':
-            raise NotImplementedError()
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], cl.int2str(examples['explanation_1'])), truncation=True, padding='do_not_pad')
         else:
             raise RuntimeError(f'Unknown classification_type="{classification_type}"')
         return examples

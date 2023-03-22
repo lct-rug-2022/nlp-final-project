@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 
 import typer
-from datasets import load_dataset
+from datasets import load_dataset, Value
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, Seq2SeqTrainingArguments, Seq2SeqTrainer, DataCollatorForSeq2Seq, EarlyStoppingCallback
 import evaluate
@@ -44,15 +44,21 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
     :return:
     """
     dataset = load_dataset('esnli')
+    cl = dataset['train'].features['label']
     dataset = dataset.rename_column('label', 'raw_label')
+
+    def _join_with_sep(list_a, list_b):
+        return [f'{h}{tokenizer.eos_token} {l}' for h, l in zip(list_a, list_b)]
 
     def tokenize_function(examples):
         if generation_type == 'explanation_only':
             examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_label':
-            raise NotImplementedError()
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], cl.int2str(examples['raw_label'])), text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
+        elif generation_type == 'explanation_use_prompt_label':
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It was {i}.' for i in cl.int2str(examples['raw_label'])]), text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'label_and_explanation':
-            raise NotImplementedError()
+            examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=_join_with_sep(cl.int2str(examples['raw_label']), examples['explanation_1']), truncation=True, padding='do_not_pad', max_length=max_length)
         else:
             raise RuntimeError(f'Unknown generation_type="{generation_type}"')
         return examples
@@ -167,7 +173,9 @@ def main(
     params = EDOS_EVAL_PARAMS[config_name.split('-')[0]]  # read base config
     params.update(EDOS_EVAL_PARAMS[config_name])  # update with specific config
     model_support_fp16 = True and 'flan-t5' not in base_model and 'byt5' not in base_model  # flan-t5 and byt5 do not support fp16
+    model_max_length = 512 if 'byt5' not in base_model else 1024
     print('model_support_fp16', model_support_fp16)
+    print('model_max_length', model_max_length)
 
     print('\n', '-' * 32, 'Loading...', '-' * 32, '\n')
 
@@ -185,7 +193,7 @@ def main(
     )
 
     # load data
-    tokenized_dataset = _load_dataset(tokenizer, generation_type=generation_type, max_length=512 if 'byt5' not in base_model else 1024)
+    tokenized_dataset = _load_dataset(tokenizer, generation_type=generation_type, max_length=model_max_length)
 
     # load new pretrained model
     model = AutoModelForSeq2SeqLM.from_pretrained(base_model)
