@@ -44,6 +44,7 @@ def _load_dataset(tokenizer, generation_type='explanation_only'):
     :return:
     """
     dataset = load_dataset('esnli')
+    dataset = dataset.rename_column('label', 'raw_label')
 
     def tokenize_function(examples):
         if generation_type == 'explanation_only':
@@ -171,6 +172,8 @@ def main(
 
     # load data
     tokenized_dataset = _load_dataset(tokenizer, generation_type=generation_type)
+    print('tokenized_dataset', tokenized_dataset['train'].features)
+    print(tokenized_dataset['train'][0])
 
     # load new pretrained model
     model = AutoModelForSeq2SeqLM.from_pretrained(base_model)

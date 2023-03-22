@@ -18,5 +18,6 @@ torchinfo
 neptune-client<1.0.0
 nlpaug
 rouge_score
+bert_score
 unbabel-comet
 nltk

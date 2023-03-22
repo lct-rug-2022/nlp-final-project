@@ -65,3 +65,9 @@ Run peregrine setup script (with activate venv, load modules and read `.env` fil
     squeue | grep $USER
     squeue | grep gpu
     ```
+
+
+sbatch scripts/generation/train.sh --base-model=t5-small
+sbatch scripts/generation/train.sh --base-model=google/flan-t5-small
+sbatch scripts/generation/train.sh --base-model=google/t5-v1_1-small
+sbatch scripts/generation/train.sh --base-model=google/byt5-small
