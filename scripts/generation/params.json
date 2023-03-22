@@ -1,8 +1,16 @@
 {
     "default": {
-        "learning_rate": 1e-4,
+        "learning_rate": 3e-4,
         "batch_size": 32,
         "max_epochs": 3,
-        "eval_steps": 500
+        "eval_steps": 1000
+    },
+
+    "default-b64": {
+        "batch_size": 64
+    },
+
+    "default-b128": {
+        "batch_size": 128
     }
 }

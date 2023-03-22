@@ -53,8 +53,10 @@ def _load_dataset(tokenizer, classification_type='nli'):
 
     def tokenize_function(examples):
         if classification_type == 'nli':
+            # using "[premise] SEP [hypothesis]" classify on [label]
             examples = tokenizer(examples['premise'], examples['hypothesis'], truncation=True, padding='do_not_pad')
         elif classification_type == 'nli_explanation':
+            # using "[premise] SEP [hypothesis] SEP [explanation]" classify on [label]
             examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], cl.int2str(examples['explanation_1'])), truncation=True, padding='do_not_pad')
         else:
             raise RuntimeError(f'Unknown classification_type="{classification_type}"')

@@ -52,12 +52,16 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
 
     def tokenize_function(examples):
         if generation_type == 'explanation_only':
+            # using "[premise] SEP [hypothesis]" generate "[explanation]"
             examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_label':
+            # using "[premise] SEP [hypothesis] SEP [label]" generate "[explanation]"
             examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], cl.int2str(examples['raw_label'])), text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_prompt_label':
+            # using "[premise] SEP [hypothesis] SEP It was [label]" generate "[explanation]"
             examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It was {i}.' for i in cl.int2str(examples['raw_label'])]), text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'label_and_explanation':
+            # using "[premise] SEP [hypothesis]" generate "[label] SEP [explanation]"
             examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=_join_with_sep(cl.int2str(examples['raw_label']), examples['explanation_1']), truncation=True, padding='do_not_pad', max_length=max_length)
         else:
             raise RuntimeError(f'Unknown generation_type="{generation_type}"')
@@ -92,15 +96,19 @@ def _get_metrics_function(tokenizer):
         decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
         decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in decoded_labels]
 
+        bertscore = {
+            f'bertscore_{k}': np.mean(v) if not isinstance(v, str) else v
+            for k, v in metric_bs.compute(predictions=decoded_preds, references=decoded_labels, lang='en', use_fast_tokenizer=True).items()
+        }
         result = {
-            **metric_bs.compute(predictions=decoded_preds, references=decoded_labels, lang='en'),
+            **bertscore,
             **metric_em.compute(predictions=decoded_preds, references=decoded_labels),
             **metric_rouge.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=False),
             **metric_bleu.compute(predictions=decoded_preds, references=decoded_labels),
         }
         return {
             k: result[k]
-            for k in ['precision', 'recall', 'f1', 'exact_match', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
+            for k in ['bertscore_f1', 'exact_match', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
         }
 
     return _compute_metrics
