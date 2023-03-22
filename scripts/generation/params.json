@@ -10,7 +10,7 @@
         "batch_size": 64
     },
 
-    "default-b128": {
-        "batch_size": 128
+    "default-b96": {
+        "batch_size": 96
     }
 }
