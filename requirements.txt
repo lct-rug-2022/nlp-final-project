@@ -21,3 +21,4 @@ rouge_score
 bert_score
 unbabel-comet
 nltk
+git+https://github.com/google-research/bleurt.git

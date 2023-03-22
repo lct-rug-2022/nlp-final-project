@@ -75,11 +75,13 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
 def _get_metrics_function(tokenizer):
     # metrics = evaluate.combine([
     #     evaluate.load('bertscore', lang='en'),
+    #     evaluate.load('bleurt', module_type='metric')
     #     evaluate.load('exact_match'),
     #     evaluate.load('rouge', use_stemmer=False),
     #     evaluate.load('bleu'),
     # ])
     metric_bs = evaluate.load('bertscore')
+    metric_bleurt = evaluate.load('bleurt', module_type='metric')
     metric_em = evaluate.load('exact_match')
     metric_rouge = evaluate.load('rouge')
     metric_bleu = evaluate.load('bleu')
@@ -96,19 +98,16 @@ def _get_metrics_function(tokenizer):
         decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
         decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in decoded_labels]
 
-        bertscore = {
-            f'bertscore_{k}': np.mean(v) if not isinstance(v, str) else v
-            for k, v in metric_bs.compute(predictions=decoded_preds, references=decoded_labels, lang='en', use_fast_tokenizer=True).items()
-        }
         result = {
-            **bertscore,
+            'bertscore_f1': np.mean(metric_bs.compute(predictions=decoded_preds, references=decoded_labels, lang='en', use_fast_tokenizer=True)['f1']),
+            'bleurt': np.mean(metric_bleurt.compute(predictions=decoded_preds, references=decoded_labels)['scores']),
             **metric_em.compute(predictions=decoded_preds, references=decoded_labels),
             **metric_rouge.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=False),
             **metric_bleu.compute(predictions=decoded_preds, references=decoded_labels),
         }
         return {
             k: result[k]
-            for k in ['bertscore_f1', 'exact_match', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
+            for k in ['bleurt', 'bertscore_f1', 'exact_match', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
         }
 
     return _compute_metrics
