@@ -37,7 +37,7 @@ nltk.download("punkt", quiet=True)
 app = typer.Typer(add_completion=False)
 
 
-def _load_dataset(tokenizer, generation_type='explanation_only'):
+def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512):
     """
     :param tokenizer:
     :param generation_type: one of 'explanation_only', 'explanation_use_label', 'label_and_explanation'
@@ -48,7 +48,7 @@ def _load_dataset(tokenizer, generation_type='explanation_only'):
 
     def tokenize_function(examples):
         if generation_type == 'explanation_only':
-            examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=examples['explanation_1'], truncation=True, padding='do_not_pad')
+            examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_label':
             raise NotImplementedError()
         elif generation_type == 'label_and_explanation':
@@ -63,7 +63,16 @@ def _load_dataset(tokenizer, generation_type='explanation_only'):
 
 
 def _get_metrics_function(tokenizer):
-    metrics = evaluate.combine(['bertscore', 'exact_match', 'rouge', 'bleu'])
+    # metrics = evaluate.combine([
+    #     evaluate.load('bertscore', lang='en'),
+    #     evaluate.load('exact_match'),
+    #     evaluate.load('rouge', use_stemmer=False),
+    #     evaluate.load('bleu'),
+    # ])
+    metric_bs = evaluate.load('bertscore')
+    metric_em = evaluate.load('exact_match')
+    metric_rouge = evaluate.load('rouge')
+    metric_bleu = evaluate.load('bleu')
 
     def _compute_metrics(eval_preds):
         preds, labels = eval_preds
@@ -77,7 +86,12 @@ def _get_metrics_function(tokenizer):
         decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
         decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in decoded_labels]
 
-        result = metrics.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=True)
+        result = {
+            **metric_bs.compute(predictions=decoded_preds, references=decoded_labels, lang='en'),
+            **metric_em.compute(predictions=decoded_preds, references=decoded_labels),
+            **metric_rouge.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=False),
+            **metric_bleu.compute(predictions=decoded_preds, references=decoded_labels),
+        }
         return {
             k: result[k]
             for k in ['precision', 'recall', 'f1', 'exact_match', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
@@ -171,9 +185,7 @@ def main(
     )
 
     # load data
-    tokenized_dataset = _load_dataset(tokenizer, generation_type=generation_type)
-    print('tokenized_dataset', tokenized_dataset['train'].features)
-    print(tokenized_dataset['train'][0])
+    tokenized_dataset = _load_dataset(tokenizer, generation_type=generation_type, max_length=512 if 'byt5' not in base_model else 1024)
 
     # load new pretrained model
     model = AutoModelForSeq2SeqLM.from_pretrained(base_model)

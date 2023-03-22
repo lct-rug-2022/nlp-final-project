@@ -65,15 +65,19 @@ def _load_dataset(tokenizer, classification_type='nli'):
 
 
 def _get_metrics_function(tokenizer):
-    f1_metric = evaluate.load('f1')
-    acc_metric = evaluate.load('accuracy')
+    # metrics = evaluate.combine([
+    #     evaluate.load('f1', average='macro'),
+    #     evaluate.load('accuracy'),
+    # ])
+    metric_f1 = evaluate.load('f1')
+    metric_acc = evaluate.load('accuracy')
 
     def _compute_metrics(eval_preds):
         preds, labels = eval_preds
         predictions = np.argmax(preds, axis=-1)
         return {
-            **f1_metric.compute(predictions=predictions, references=labels, average='macro'),
-            **acc_metric.compute(predictions=predictions, references=labels)
+            **metric_f1.compute(predictions=predictions, references=labels, average='macro'),
+            **metric_acc.compute(predictions=predictions, references=labels),
         }
 
     return _compute_metrics
