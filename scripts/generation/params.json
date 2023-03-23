@@ -12,5 +12,22 @@
 
     "default-b96": {
         "batch_size": 96
+    },
+
+    "default-b96-lr5e-4": {
+        "learning_rate": 5e-4,
+        "batch_size": 96
+    },
+
+    "default-b96-lr1e-3": {
+        "learning_rate": 1e-3,
+        "batch_size": 96
+    },
+
+    "selected": {
+        "learning_rate": 1e-3,
+        "batch_size": 96,
+        "max_epochs": 10,
+        "eval_steps": 2000
     }
 }

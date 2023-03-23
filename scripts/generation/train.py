@@ -12,6 +12,7 @@ from torchinfo import summary
 import nltk
 from transformers.integrations import NeptuneCallback
 import neptune.new as neptune
+from sklearn.metrics import f1_score
 
 
 SEED = 42
@@ -38,17 +39,16 @@ app = typer.Typer(add_completion=False)
 
 
 def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512):
-    """
-    :param tokenizer:
-    :param generation_type: one of 'explanation_only', 'explanation_use_label', 'label_and_explanation'
-    :return:
-    """
+    """generation_type: one of 'explanation_only', 'explanation_use_label', 'explanation_use_prompt_label', 'explanation_use_flan_prompt_label', 'label_and_explanation'"""
     dataset = load_dataset('esnli')
     cl = dataset['train'].features['label']
     dataset = dataset.rename_column('label', 'raw_label')
 
     def _join_with_sep(list_a, list_b):
-        return [f'{h}{tokenizer.eos_token} {l}' for h, l in zip(list_a, list_b)]
+        # TODO: add new special token instead of using tokenizer.unk_token
+        # special_token = tokenizer.additional_special_tokens[0]
+        special_token = ':'
+        return [f'{h}{special_token} {l}' for h, l in zip(list_a, list_b)]
 
     def tokenize_function(examples):
         if generation_type == 'explanation_only':
@@ -60,6 +60,9 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
         elif generation_type == 'explanation_use_prompt_label':
             # using "[premise] SEP [hypothesis] SEP It was [label]" generate "[explanation]"
             examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It was {i}.' for i in cl.int2str(examples['raw_label'])]), text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
+        elif generation_type == 'explanation_use_flan_prompt_label':
+            # using "[premise] SEP [hypothesis] SEP It is [label]. Give an explanation why." generate "[explanation]"
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It is {i}. Give an explanation why.' for i in cl.int2str(examples['raw_label'])]), text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'label_and_explanation':
             # using "[premise] SEP [hypothesis]" generate "[label] SEP [explanation]"
             examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=_join_with_sep(cl.int2str(examples['raw_label']), examples['explanation_1']), truncation=True, padding='do_not_pad', max_length=max_length)
@@ -72,13 +75,16 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
     return tokenized_dataset
 
 
-def _get_metrics_function(tokenizer):
+def _get_metrics_function(tokenizer, generation_type='explanation_only'):
+    """generation_type: one of 'explanation_only', 'explanation_use_label', 'explanation_use_prompt_label', 'explanation_use_flan_prompt_label', 'label_and_explanation'"""
     # metrics = evaluate.combine([
     #     evaluate.load('bertscore', lang='en'),
     #     evaluate.load('exact_match'),
     #     evaluate.load('rouge', use_stemmer=False),
     #     evaluate.load('bleu'),
     # ])
+    metric_f1 = evaluate.load('f1')
+
     metric_bs = evaluate.load('bertscore')
     # metric_bleurt = evaluate.load('bleurt', module_type='metric')
     metric_em = evaluate.load('exact_match')
@@ -90,14 +96,31 @@ def _get_metrics_function(tokenizer):
 
         # decode preds and labels
         labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+
         decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True, clean_up_tokenization_spaces=True)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+
+        if generation_type == 'label_and_explanation':
+            # split first token [label] from the other tokens [explanation]
+            # TODO: add new special token instead@see tokenize_function)
+            # special_token = tokenizer.additional_special_tokens[0]
+            special_token = ':'
+            class_prods, decoded_preds = zip(*[i.split(special_token, 1) if special_token in i else ('', special_token) for i in decoded_preds])
+            class_labels, decoded_labels = zip(*[i.split(special_token, 1) if special_token in i else ('', special_token) for i in decoded_labels])
+
+            classification_metrics = {
+                'f1': f1_score(class_labels, class_prods, average='macro'),
+            }
+            # classification_metrics = metric_f1.compute(predictions=class_prods, references=class_labels, awerage='macro')
+        else:
+            classification_metrics = {'f1': None}
 
         # rougeLSum expects newline after each sentence
         decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
         decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in decoded_labels]
 
         result = {
+            **classification_metrics,
             'bertscore_f1': np.mean(metric_bs.compute(predictions=decoded_preds, references=decoded_labels, lang='en', use_fast_tokenizer=True)['f1']),
             # 'bleurt': np.mean(metric_bleurt.compute(predictions=decoded_preds, references=decoded_labels, checkpoint='bleurt-tiny-128')['scores']),
             **metric_em.compute(predictions=decoded_preds, references=decoded_labels),
@@ -106,7 +129,7 @@ def _get_metrics_function(tokenizer):
         }
         return {
             k: result[k]
-            for k in ['bertscore_f1', 'exact_match', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
+            for k in ['f1', 'bertscore_f1', 'exact_match', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
         }
 
     return _compute_metrics
@@ -206,7 +229,7 @@ def main(
     summary(model)
 
     # load metrics
-    compute_metrics = _get_metrics_function(tokenizer)
+    compute_metrics = _get_metrics_function(tokenizer, generation_type=generation_type)
 
     # create trainer
     training_args = _get_trainer_args(
