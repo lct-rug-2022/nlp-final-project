@@ -169,6 +169,8 @@ def _get_trainer_args(params, hub_model_name, output_dir, push_to_hub=False, mod
         save_total_limit=3,
 
         predict_with_generate=True,
+        generation_max_length=256,
+        generation_num_beams=2,
         torch_compile=False,  # not working as Tesla T4 for now
 
         hub_model_id=hub_model_name,
@@ -213,6 +215,11 @@ def main(
     neptune_callback = NeptuneCallback(run=neptune_run)
     neptune_object_id = neptune_run['sys/id'].fetch()
     print('neptune_object_id', neptune_object_id)
+    neptune_run['finetuning/parameters'] = {
+        'base_model': base_model,
+        'config_name': config_name,
+        'generation_type': generation_type,
+    }
 
     # load pretrained tokenizer
     tokenizer = AutoTokenizer.from_pretrained(base_model)
@@ -270,11 +277,6 @@ def main(
     test_prediction = trainer.predict(tokenized_dataset['test'], num_beams=4)
     print('metrics (n_bins=4)', dict(test_prediction.metrics))
 
-    neptune_callback.run['finetuning/parameters'] = {
-        'base_model': base_model,
-        'config_name': config_name,
-        'generation_type': generation_type,
-    }
     neptune_callback.run['finetuning/final_metrics'] = dict(test_prediction.metrics)
 
 

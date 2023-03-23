@@ -161,6 +161,11 @@ def main(
     neptune_callback = NeptuneCallback(run=neptune_run)
     neptune_object_id = neptune_run['sys/id'].fetch()
     print('neptune_object_id', neptune_object_id)
+    neptune_run['finetuning/parameters'] = {
+        'base_model': base_model,
+        'config_name': config_name,
+        'classification_type': classification_type,
+    }
 
     # load pretrained tokenizer
     tokenizer = AutoTokenizer.from_pretrained(base_model)
@@ -214,11 +219,6 @@ def main(
 
     test_prediction = trainer.predict(tokenized_dataset['test'])
 
-    neptune_callback.run['finetuning/parameters'] = {
-        'base_model': base_model,
-        'config_name': config_name,
-        'classification_type': classification_type,
-    }
     neptune_callback.run['finetuning/final_metrics'] = dict(test_prediction.metrics)
 
 
