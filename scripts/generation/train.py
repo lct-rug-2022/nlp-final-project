@@ -50,22 +50,38 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
         special_token = ':'
         return [f'{h}{special_token} {l}' for h, l in zip(list_a, list_b)]
 
+    def _form_target(list_a, list_b, list_c, list_d):
+        special_token = ':'
+        sep_token = ';'
+        if generation_type == 'label_and_explanation':
+            if len(max(list_c)) == 0:  # training
+                return [f'{l}{special_token} {e1}' for l, e1 in zip(list_a, list_b)]  # training
+            else:
+                return [f'{l}{special_token} {e1} {sep_token}{l}{special_token} {e2} {sep_token}{l}{special_token} {e3}'
+                        for l, e1, e2, e3 in zip(list_a, list_b, list_c, list_d)]
+        else:
+            if len(max(list_c)) == 0:  # training
+                return list_b
+            else:
+                return [f'{e1} {sep_token} {e2} {sep_token} {e3}' for e1, e2, e3 in zip(list_b, list_c, list_d)]
+
     def tokenize_function(examples):
         if generation_type == 'explanation_only':
             # using "[premise] SEP [hypothesis]" generate "[explanation]"
-            examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_label':
             # using "[premise] SEP [hypothesis] SEP [label]" generate "[explanation]"
-            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], cl.int2str(examples['raw_label'])), text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], cl.int2str(examples['raw_label'])), text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_prompt_label':
             # using "[premise] SEP [hypothesis] SEP It was [label]" generate "[explanation]"
-            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It was {i}.' for i in cl.int2str(examples['raw_label'])]), text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It was {i}.' for i in cl.int2str(examples['raw_label'])]), text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_flan_prompt_label':
             # using "[premise] SEP [hypothesis] SEP It is [label]. Give an explanation why." generate "[explanation]"
-            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It is {i}. Give an explanation why.' for i in cl.int2str(examples['raw_label'])]), text_target=examples['explanation_1'], truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It is {i}. Give an explanation why.' for i in cl.int2str(examples['raw_label'])]), text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'label_and_explanation':
             # using "[premise] SEP [hypothesis]" generate "[label] SEP [explanation]"
-            examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=_join_with_sep(cl.int2str(examples['raw_label']), examples['explanation_1']), truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], examples['hypothesis'],
+                                 text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
         else:
             raise RuntimeError(f'Unknown generation_type="{generation_type}"')
         return examples
@@ -87,11 +103,13 @@ def _get_metrics_function(tokenizer, generation_type='explanation_only'):
 
     metric_bs = evaluate.load('bertscore')
     # metric_bleurt = evaluate.load('bleurt', module_type='metric')
-    metric_em = evaluate.load('exact_match')
+    # metric_em = evaluate.load('exact_match')
     metric_rouge = evaluate.load('rouge')
     metric_bleu = evaluate.load('bleu')
 
     def _compute_metrics(eval_preds):
+
+        sep_token = ';'
         preds, labels = eval_preds
 
         # decode preds and labels
@@ -106,8 +124,7 @@ def _get_metrics_function(tokenizer, generation_type='explanation_only'):
             # special_token = tokenizer.additional_special_tokens[0]
             special_token = ':'
             class_prods, decoded_preds = zip(*[i.split(special_token, 1) if special_token in i else ('', special_token) for i in decoded_preds])
-            class_labels, decoded_labels = zip(*[i.split(special_token, 1) if special_token in i else ('', special_token) for i in decoded_labels])
-
+            class_labels = [i.split(special_token, 1)[0].strip() for i in decoded_labels]
             classification_metrics = {
                 'f1': f1_score(class_labels, class_prods, average='macro'),
             }
@@ -117,19 +134,19 @@ def _get_metrics_function(tokenizer, generation_type='explanation_only'):
 
         # rougeLSum expects newline after each sentence
         decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
-        decoded_labels = ["\n".join(nltk.sent_tokenize(label.strip())) for label in decoded_labels]
+        decoded_labels = [["\n".join(nltk.sent_tokenize(label.strip())) for label in item_labels.split(sep_token)] for item_labels in decoded_labels]
 
         result = {
             **classification_metrics,
             'bertscore_f1': np.mean(metric_bs.compute(predictions=decoded_preds, references=decoded_labels, lang='en', use_fast_tokenizer=True)['f1']),
             # 'bleurt': np.mean(metric_bleurt.compute(predictions=decoded_preds, references=decoded_labels, checkpoint='bleurt-tiny-128')['scores']),
-            **metric_em.compute(predictions=decoded_preds, references=decoded_labels),
+            # **metric_em.compute(predictions=decoded_preds, references=decoded_labels),
             **metric_rouge.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=False),
             **metric_bleu.compute(predictions=decoded_preds, references=decoded_labels),
         }
         return {
             k: result[k]
-            for k in ['f1', 'bertscore_f1', 'exact_match', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
+            for k in ['f1', 'bertscore_f1', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
         }
 
     return _compute_metrics
