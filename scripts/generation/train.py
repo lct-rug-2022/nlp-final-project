@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 
 import typer
-from datasets import load_dataset, Value
+from datasets import load_dataset
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, Seq2SeqTrainingArguments, Seq2SeqTrainer, DataCollatorForSeq2Seq, EarlyStoppingCallback
 import evaluate
@@ -26,9 +26,13 @@ ROOT_FOLDER = Path(__file__).parent if Path(__file__).parent.name == 'content' e
 with open(Path(__file__).parent / 'params.json') as f:
     EDOS_EVAL_PARAMS = json.load(f)
 
+
+# prefer bf16, https://www.reddit.com/r/MachineLearning/comments/vndtn8/d_mixed_precision_training_difference_between/
 IS_CUDA_AVAILABLE = torch.cuda.is_available()
 IS_BF16_AVAILABLE = IS_CUDA_AVAILABLE and torch.cuda.is_bf16_supported()
+IS_FP16_AVAILABLE = IS_CUDA_AVAILABLE and (not IS_BF16_AVAILABLE)
 print('IS_CUDA_AVAILABLE', IS_CUDA_AVAILABLE)
+print('IS_FP16_AVAILABLE', IS_FP16_AVAILABLE)
 print('IS_BF16_AVAILABLE', IS_BF16_AVAILABLE)
 
 
@@ -50,12 +54,13 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
         special_token = ':'
         return [f'{h}{special_token} {l}' for h, l in zip(list_a, list_b)]
 
-    def _form_target(list_a, list_b, list_c, list_d):
-        special_token = ':'
-        sep_token = ';'
-        if generation_type == 'label_and_explanation':
+    def _form_target(list_a, list_b, list_c, list_d, include_label: bool, sep_token = ';', special_token = ':'):
+        """Constructs the target sequence for the model.
+        In case of training use first explanation, for validation use all explanations connacted with sep.
+        """
+        if include_label:
             if len(max(list_c)) == 0:  # training
-                return [f'{l}{special_token} {e1}' for l, e1 in zip(list_a, list_b)]  # training
+                return [f'{l}{special_token} {e1}' for l, e1 in zip(list_a, list_b)]
             else:
                 return [f'{l}{special_token} {e1} {sep_token}{l}{special_token} {e2} {sep_token}{l}{special_token} {e3}'
                         for l, e1, e2, e3 in zip(list_a, list_b, list_c, list_d)]
@@ -66,22 +71,23 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
                 return [f'{e1} {sep_token} {e2} {sep_token} {e3}' for e1, e2, e3 in zip(list_b, list_c, list_d)]
 
     def tokenize_function(examples):
+        _text_target = _form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3'], include_label=generation_type=='label_and_explanation')
+
         if generation_type == 'explanation_only':
             # using "[premise] SEP [hypothesis]" generate "[explanation]"
-            examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=_text_target, truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_label':
             # using "[premise] SEP [hypothesis] SEP [label]" generate "[explanation]"
-            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], cl.int2str(examples['raw_label'])), text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], cl.int2str(examples['raw_label'])), text_target=_text_target, truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_prompt_label':
             # using "[premise] SEP [hypothesis] SEP It was [label]" generate "[explanation]"
-            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It was {i}.' for i in cl.int2str(examples['raw_label'])]), text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It was {i}.' for i in cl.int2str(examples['raw_label'])]), text_target=_text_target, truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_flan_prompt_label':
             # using "[premise] SEP [hypothesis] SEP It is [label]. Give an explanation why." generate "[explanation]"
-            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It is {i}. Give an explanation why.' for i in cl.int2str(examples['raw_label'])]), text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'It is {i}. Give an explanation why.' for i in cl.int2str(examples['raw_label'])]), text_target=_text_target, truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'label_and_explanation':
             # using "[premise] SEP [hypothesis]" generate "[label] SEP [explanation]"
-            examples = tokenizer(examples['premise'], examples['hypothesis'],
-                                 text_target=_form_target(cl.int2str(examples['raw_label']), examples['explanation_1'], examples['explanation_2'], examples['explanation_3']), truncation=True, padding='do_not_pad', max_length=max_length)
+            examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=_text_target, truncation=True, padding='do_not_pad', max_length=max_length)
         else:
             raise RuntimeError(f'Unknown generation_type="{generation_type}"')
         return examples
@@ -95,21 +101,16 @@ def _get_metrics_function(tokenizer, generation_type='explanation_only'):
     """generation_type: one of 'explanation_only', 'explanation_use_label', 'explanation_use_prompt_label', 'explanation_use_flan_prompt_label', 'label_and_explanation'"""
     # metrics = evaluate.combine([
     #     evaluate.load('bertscore', lang='en'),
-    #     evaluate.load('exact_match'),
     #     evaluate.load('rouge', use_stemmer=False),
     #     evaluate.load('bleu'),
     # ])
     metric_f1 = evaluate.load('f1')
 
     metric_bs = evaluate.load('bertscore')
-    # metric_bleurt = evaluate.load('bleurt', module_type='metric')
-    # metric_em = evaluate.load('exact_match')
     metric_rouge = evaluate.load('rouge')
     metric_bleu = evaluate.load('bleu')
 
-    def _compute_metrics(eval_preds):
-
-        sep_token = ';'
+    def _compute_metrics(eval_preds, sep_token = ';'):
         preds, labels = eval_preds
 
         # decode preds and labels
@@ -133,14 +134,13 @@ def _get_metrics_function(tokenizer, generation_type='explanation_only'):
             classification_metrics = {'f1': None}
 
         # rougeLSum expects newline after each sentence
-        decoded_preds = ["\n".join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
-        decoded_labels = [["\n".join(nltk.sent_tokenize(label.strip())) for label in item_labels.split(sep_token)] for item_labels in decoded_labels]
+        decoded_preds = ['\n'.join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
+        decoded_labels = [['\n'.join(nltk.sent_tokenize(label.strip())) for label in item_labels.split(sep_token)] for item_labels in decoded_labels]
 
         result = {
             **classification_metrics,
             'bertscore_f1': np.mean(metric_bs.compute(predictions=decoded_preds, references=decoded_labels, lang='en', use_fast_tokenizer=True)['f1']),
             # 'bleurt': np.mean(metric_bleurt.compute(predictions=decoded_preds, references=decoded_labels, checkpoint='bleurt-tiny-128')['scores']),
-            # **metric_em.compute(predictions=decoded_preds, references=decoded_labels),
             **metric_rouge.compute(predictions=decoded_preds, references=decoded_labels, use_stemmer=False),
             **metric_bleu.compute(predictions=decoded_preds, references=decoded_labels),
         }
@@ -162,16 +162,17 @@ def _get_trainer_args(params, hub_model_name, output_dir, push_to_hub=False, mod
         weight_decay=params.get('weight_decay', 0.01),
         optim=params.get('optim', 'adafactor'),
 
-        auto_find_batch_size=True,  # divide by 2 in case of OOM
+        auto_find_batch_size=False,  # divide by 2 in case of OOM
         per_device_train_batch_size=params['batch_size'],
         per_device_eval_batch_size=params['batch_size'],
         num_train_epochs=params['max_epochs'],
         warmup_ratio=params.get('warmup_ratio', 0.05),
 
         no_cuda=not IS_CUDA_AVAILABLE,
-        fp16=IS_CUDA_AVAILABLE and model_support_fp16,  # always use fp16 on gpu, if not a special model
-        fp16_full_eval=IS_CUDA_AVAILABLE,
+        fp16=IS_FP16_AVAILABLE and model_support_fp16,  # always use fp16 on gpu, if not a special model
+        fp16_full_eval=IS_FP16_AVAILABLE,
         bf16=IS_BF16_AVAILABLE,
+        bf16_full_eval=IS_BF16_AVAILABLE,
 
         logging_strategy='steps',
         logging_steps=params['eval_steps'],
@@ -187,7 +188,7 @@ def _get_trainer_args(params, hub_model_name, output_dir, push_to_hub=False, mod
 
         predict_with_generate=True,
         generation_max_length=256,
-        generation_num_beams=2,
+        generation_num_beams=1,  # faster evaluation, but test score will be better
         torch_compile=False,  # not working as Tesla T4 for now
 
         hub_model_id=hub_model_name,

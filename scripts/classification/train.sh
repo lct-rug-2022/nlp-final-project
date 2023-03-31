@@ -1,23 +1,20 @@
 #!/bin/bash
 #SBATCH --time=2:00:00
 #SBATCH --partition=gpushort
-#SBATCH --gres=gpu:v100:1
-#SBATCH --export=ALL
+#SBATCH --gpus-per-node=a100.20gb:1
 #SBATCH --job-name=esnli
+#SBATCH --mem=20G
 
 
 module purge
-module load CUDA/11.4.1
-module load cuDNN/8.2.2.26-CUDA-11.4.1
-module load NCCL/2.10.3-GCCcore-11.2.0-CUDA-11.4.1
-module load GCC/11.2.0
-module load libgit2/1.1.1-GCCcore-11.2.0
-module load Python/3.9.6-GCCcore-11.2.0
-module load git/2.33.1-GCCcore-11.2.0-nodocs
-module load git-lfs/2.7.1
+module load CUDA/11.7.0
+module load cuDNN/8.4.1.50-CUDA-11.7.0
+module load NCCL/2.12.12-GCCcore-11.3.0-CUDA-11.7.0
+module load Python/3.10.4-GCCcore-11.3.0
+module load GCC/11.3.0
 
 
-source /data/$USER/.envs/nlp-final-project/bin/activate
+source .venv/bin/activate
 
 
 export $(cat .env | xargs)

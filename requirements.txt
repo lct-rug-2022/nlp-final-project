@@ -1,7 +1,5 @@
 # dl
---extra-index-url https://download.pytorch.org/whl/cu113
-torch==1.12.1+cu113 ; sys_platform != 'darwin'
-torch==1.12.1 ; sys_platform == 'darwin'
+torch>=2.0.0
 datasets
 transformers
 evaluate
@@ -19,6 +17,6 @@ neptune-client<1.0.0
 nlpaug
 rouge_score
 bert_score
-unbabel-comet
+# unbabel-comet
 nltk
-git+https://github.com/google-research/bleurt.git
+#git+https://github.com/google-research/bleurt.git

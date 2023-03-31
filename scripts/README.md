@@ -20,41 +20,39 @@ ALL INSIDE REPO
 
 1. Create `.env` file with `NEPTUNE_PROJECT` and `NEPTUNE_API_TOKEN`
 2. Load modules same as in `jobscript` (for baseline it is `single_task.sh`)
-3. Create new venv 
+   ```shell
+   module purge
+   module load CUDA/11.7.0
+   module load cuDNN/8.4.1.50-CUDA-11.7.0
+   module load NCCL/2.12.12-GCCcore-11.3.0-CUDA-11.7.0
+   module load Python/3.10.4-GCCcore-11.3.0
+   module load GCC/11.3.0
+   ```
+3. Create new venv and make `.venv` alias in the folder
     ```shell
-    python3 -m venv /data/$USER/.envs/nlp-final-project
-    ln -d -s /data/$USER/.envs/nlp-final-project venv
+    python3 -m venv /scratch/$USER/.envs/nlp-final-project
+    ln -d -s /scratch/$USER/.envs/nlp-final-project .venv
     ```
 4. Install libs 
     ```shell
-    source /data/$USER/.envs/nlp-final-project/bin/activate
-    pip install pygit2 --prefer-binary
-    pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu113
+    source .venv/bin/activate
     pip install -U -r requirements.txt
     ```
-5. Make `results` folder at `/data` to log there (more space)
+5. Make `results` folder at `/scratch` to log there (more space)
     ```shell
-    mkdir /data/$USER/nlp-final-project
-    mkdir /data/$USER/nlp-final-project/results
-    ln -d -s /data/$USER/nlp-final-project/results results
-6. Make `models` folder at `/data` to log there (more space)
-    ```shell
-    mkdir /data/$USER/nlp-final-project/models
-    ln -d -s /data/$USER/nlp-final-project/models models
+    mkdir -p /scratch/$USER/nlp-final-project/results
     ln -d -s /scratch/$USER/nlp-final-project/results results
-    ```
-7. Make alias `.venv` folder at `/data/$USER/.envs/nlp-final-project` 
+6. Make `models` folder at `/scratch` to log there (more space)
     ```shell
-    ln -d -s /data/$USER/.envs/nlp-final-project .venv
-    ln -d -s /data/$USER/.envs/nlp-final-project .venv
+    mkdir -p /scratch/$USER/nlp-final-project/models
+    ln -d -s /scratch/$USER/nlp-final-project/models models
     ```
    
-#### each session setup 
+#### Each session setup 
 
-Run peregrine setup script (with activate venv, load modules and read `.env` file)
-`bash training/peregrine-setup.sh`
+Ether run sbatch jobs only or setup modules (see above) and activate venv. 
    
-#### peregrine run
+#### Habrok run
 
 1. Run job script 
     ```shell
@@ -64,6 +62,7 @@ Run peregrine setup script (with activate venv, load modules and read `.env` fil
     ```shell
     squeue | grep $USER
     squeue | grep gpu
+    squeue -o "%.18i %.9P %.8j %.8u %.2t %.10M %.6D %.18R %p" | grep gpu
     ```
 
 

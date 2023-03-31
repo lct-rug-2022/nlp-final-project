@@ -2,9 +2,8 @@ import json
 import random
 from pathlib import Path
 
-import pandas as pd
 import typer
-from datasets import load_dataset, ClassLabel
+from datasets import load_dataset
 import torch
 from transformers import AutoConfig, AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer, DataCollatorWithPadding, EarlyStoppingCallback
 import evaluate
@@ -26,9 +25,13 @@ ROOT_FOLDER = Path(__file__).parent if Path(__file__).parent.name == 'content' e
 with open(Path(__file__).parent / 'params.json') as f:
     EDOS_EVAL_PARAMS = json.load(f)
 
+
+# prefer bf16, https://www.reddit.com/r/MachineLearning/comments/vndtn8/d_mixed_precision_training_difference_between/
 IS_CUDA_AVAILABLE = torch.cuda.is_available()
 IS_BF16_AVAILABLE = IS_CUDA_AVAILABLE and torch.cuda.is_bf16_supported()
+IS_FP16_AVAILABLE = IS_CUDA_AVAILABLE and (not IS_BF16_AVAILABLE)
 print('IS_CUDA_AVAILABLE', IS_CUDA_AVAILABLE)
+print('IS_FP16_AVAILABLE', IS_FP16_AVAILABLE)
 print('IS_BF16_AVAILABLE', IS_BF16_AVAILABLE)
 
 
@@ -96,16 +99,17 @@ def _get_trainer_args(params, hub_model_name, output_dir, push_to_hub=False, mod
         weight_decay=params.get('weight_decay', 0.01),
         optim=params.get('optim', 'adamw_torch'),
 
-        auto_find_batch_size=True,  # divide by 2 in case of OOM
+        auto_find_batch_size=False,  # divide by 2 in case of OOM
         per_device_train_batch_size=params['batch_size'],
         per_device_eval_batch_size=params['batch_size'],
         num_train_epochs=params['max_epochs'],
         warmup_ratio=params.get('warmup_ratio', 0.05),
 
         no_cuda=not IS_CUDA_AVAILABLE,
-        fp16=IS_CUDA_AVAILABLE and model_support_fp16,  # always use fp16 on gpu, if not a special model
-        fp16_full_eval=IS_CUDA_AVAILABLE,
+        fp16=IS_FP16_AVAILABLE and model_support_fp16,  # always use fp16 on gpu, if not a special model
+        fp16_full_eval=IS_FP16_AVAILABLE,
         bf16=IS_BF16_AVAILABLE,
+        bf16_full_eval=IS_BF16_AVAILABLE,
 
         logging_strategy='steps',
         logging_steps=params['eval_steps'],
