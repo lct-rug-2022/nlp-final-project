@@ -12,9 +12,9 @@ content/
 Export `NEPTUNE_PROJECT` and `NEPTUNE_API_TOKEN`, login into `HF Hub` via `huggingface_login`
 
 
-### Peregrine Run
+### Habrok Run
 
-#### peregrine setup (once)
+#### Habrok setup (once)
 
 ALL INSIDE REPO 
 
@@ -54,6 +54,11 @@ Ether run sbatch jobs only or setup modules (see above) and activate venv.
    
 #### Habrok run
 
+0. Copy files to the server, e.g:
+   ```shell
+   scp -r ./ habrok:~/nlp-final-project
+   ```
+   Or setup PyCharm deployment (settings -> deployment -> add new -> SFTP)
 1. Run job script 
     ```shell
     sbatch scripts/classification/train.sh --base-model=roberta-base [other options]
