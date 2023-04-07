@@ -12,8 +12,7 @@ from torchinfo import summary
 import nltk
 from transformers.integrations import NeptuneCallback
 import neptune.new as neptune
-from sklearn.metrics import f1_score
-
+from sklearn.metrics import f1_score, accuracy_score
 
 SEED = 42
 random.seed(SEED)
@@ -76,6 +75,9 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
         if generation_type == 'explanation_only':
             # using "[premise] SEP [hypothesis]" generate "[explanation]"
             examples = tokenizer(examples['premise'], examples['hypothesis'], text_target=_text_target, truncation=True, padding='do_not_pad', max_length=max_length)
+        elif generation_type == 'explanation_only_flan_prompt':
+            # using "[premise] SEP [hypothesis] SEP Give an explanation." generate "[explanation]"
+            examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], [f'Give an explanation.'] * len(examples['raw_label'])), text_target=_text_target, truncation=True, padding='do_not_pad', max_length=max_length)
         elif generation_type == 'explanation_use_label':
             # using "[premise] SEP [hypothesis] SEP [label]" generate "[explanation]"
             examples = tokenizer(examples['premise'], _join_with_sep(examples['hypothesis'], cl.int2str(examples['raw_label'])), text_target=_text_target, truncation=True, padding='do_not_pad', max_length=max_length)
@@ -98,19 +100,17 @@ def _load_dataset(tokenizer, generation_type='explanation_only', max_length=512)
 
 
 def _get_metrics_function(tokenizer, generation_type='explanation_only'):
-    """generation_type: one of 'explanation_only', 'explanation_use_label', 'explanation_use_prompt_label', 'explanation_use_flan_prompt_label', 'label_and_explanation'"""
+    """generation_type: one of 'explanation_only', explanation_only_flan_prompt, 'explanation_use_label', 'explanation_use_prompt_label', 'explanation_use_flan_prompt_label', 'label_and_explanation'"""
     # metrics = evaluate.combine([
     #     evaluate.load('bertscore', lang='en'),
     #     evaluate.load('rouge', use_stemmer=False),
     #     evaluate.load('bleu'),
     # ])
-    metric_f1 = evaluate.load('f1')
-
     metric_bs = evaluate.load('bertscore')
     metric_rouge = evaluate.load('rouge')
     metric_bleu = evaluate.load('bleu')
 
-    def _compute_metrics(eval_preds, sep_token = ';'):
+    def _compute_metrics(eval_preds, sep_token=';', special_token=':'):
         preds, labels = eval_preds
 
         # decode preds and labels
@@ -121,19 +121,21 @@ def _get_metrics_function(tokenizer, generation_type='explanation_only'):
 
         if generation_type == 'label_and_explanation':
             # split first token [label] from the other tokens [explanation]
+            # so remove class label completely from the explanation not to influence generation metrics
             # TODO: add new special token instead@see tokenize_function)
             # special_token = tokenizer.additional_special_tokens[0]
-            special_token = ':'
-            class_prods, decoded_preds = zip(*[i.split(special_token, 1) if special_token in i else ('', special_token) for i in decoded_preds])
-            class_labels = [i.split(special_token, 1)[0].strip() for i in decoded_labels]
-            classification_metrics = {
-                'f1': f1_score(class_labels, class_prods, average='macro'),
-            }
-            # classification_metrics = metric_f1.compute(predictions=class_prods, references=class_labels, awerage='macro')
-        else:
-            classification_metrics = {'f1': None}
+            class_preds, decoded_preds = zip(*[i.split(special_token, 1) if special_token in i else ('', i) for i in decoded_preds])
+            class_labels, decoded_labels = zip(*[i.split(special_token, 1) for i in decoded_labels])
+            decoded_labels = [sep_token.join(ref.split(special_token, 1)[-1] for ref in i.split(sep_token)) for i in decoded_labels]
 
-        # rougeLSum expects newline after each sentence
+            classification_metrics = {
+                'f1': f1_score(class_labels, class_preds, average='macro'),
+                'accuracy': accuracy_score(class_labels, class_preds),
+            }
+        else:
+            classification_metrics = {'f1': None, 'accuracy': None}
+
+        # rougeLSum expects newline after each sentence, also split multiple predictions in list of references
         decoded_preds = ['\n'.join(nltk.sent_tokenize(pred.strip())) for pred in decoded_preds]
         decoded_labels = [['\n'.join(nltk.sent_tokenize(label.strip())) for label in item_labels.split(sep_token)] for item_labels in decoded_labels]
 
@@ -146,7 +148,7 @@ def _get_metrics_function(tokenizer, generation_type='explanation_only'):
         }
         return {
             k: result[k]
-            for k in ['f1', 'bertscore_f1', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
+            for k in ['accuracy', 'f1', 'bertscore_f1', 'rouge1', 'rouge2', 'rougeL', 'rougeLsum', 'bleu']
         }
 
     return _compute_metrics
