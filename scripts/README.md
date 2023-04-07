@@ -71,7 +71,14 @@ Ether run sbatch jobs only or setup modules (see above) and activate venv.
     ```
 
 
-sbatch scripts/generation/train.sh --base-model=t5-small
-sbatch scripts/generation/train.sh --base-model=google/flan-t5-small
-sbatch scripts/generation/train.sh --base-model=google/t5-v1_1-small
-sbatch scripts/generation/train.sh --base-model=google/byt5-small
+Example, run model search:
+```shell
+sbatch scripts/generation/train.sh --config-name=selected --base-model=t5-small
+sbatch scripts/generation/train.sh --config-name=selected --base-model=google/flan-t5-small
+sbatch scripts/generation/train.sh --config-name=selected --base-model=google/t5-v1_1-small
+sbatch scripts/generation/train.sh --config-name=selected --base-model=google/byt5-small
+
+sbatch scripts/generation/train.sh --config-name=selected --base-model=facebook/bart-base
+sbatch scripts/generation/train.sh --config-name=selected --base-model=gpt2
+sbatch scripts/generation/train.sh --config-name=selected --base-model=facebook/opt-125m
+```
