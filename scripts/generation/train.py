@@ -213,7 +213,7 @@ def main(
         save_folder: Path = typer.Option(ROOT_FOLDER / 'models', dir_okay=True, writable=True, help='Folder to save trained model'),
 ):
     clear_base_model = base_model.replace('/', '-')
-    model_name_to_save = f'-{clear_base_model}-e-snli-generation-{generation_type}-{config_name}'
+    model_name_to_save = f'{clear_base_model}-e-snli-generation-{generation_type}-{config_name}'
     if postfix:
         model_name_to_save += f'{model_name_to_save}-{postfix}'
     output_dir = str(results_folder / model_name_to_save)
