@@ -82,3 +82,18 @@ sbatch scripts/generation/train.sh --config-name=selected --base-model=facebook/
 sbatch scripts/generation/train.sh --config-name=selected --base-model=gpt2
 sbatch scripts/generation/train.sh --config-name=selected --base-model=facebook/opt-125m
 ```
+
+Example, run search by task:
+```shell
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=t5-small --generation-type=explanation_only_flan_prompt
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=t5-small --generation-type=explanation_use_label
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=t5-small --generation-type=explanation_use_prompt_label
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=t5-small --generation-type=explanation_use_flan_prompt_label
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=t5-small --generation-type=label_and_explanation
+
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=google/flan-t5-small --generation-type=explanation_only_flan_prompt
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=google/flan-t5-small --generation-type=explanation_use_label
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=google/flan-t5-small --generation-type=explanation_use_prompt_label
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=google/flan-t5-small --generation-type=explanation_use_flan_prompt_label
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=google/flan-t5-small --generation-type=label_and_explanation
+```

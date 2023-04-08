@@ -23,5 +23,17 @@
         "batch_size": 64,
         "max_epochs": 3,
         "eval_steps": 400
+    },
+
+    "base-b48": {
+        "batch_size": 48
+    },
+
+    "base-b32": {
+        "batch_size": 32
+    },
+
+    "base-b16": {
+        "batch_size": 16
     }
 }
