@@ -97,3 +97,10 @@ sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=googl
 sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=google/flan-t5-small --generation-type=explanation_use_flan_prompt_label
 sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=google/flan-t5-small --generation-type=label_and_explanation
 ```
+
+
+```shell
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=google/flan-t5-small --generation-type=label_and_explanation --push-to-hub
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=t5-small --generation-type=explanation_only --push-to-hub
+sbatch scripts/generation/train.sh --config-name=selected-b64 --base-model=google/flan-t5-small --generation-type=explanation_use_prompt_label --push-to-hub
+```

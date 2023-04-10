@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 #SBATCH --partition=gpushort
 #SBATCH --gpus-per-node=a100.20gb:1
 #SBATCH --job-name=esnli
